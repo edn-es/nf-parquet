@@ -69,7 +69,7 @@ This file is required to allow the access of our schemas to all modules (and avo
 
 Now compile your scemas with:
 
-`javac -d lib/ schemas/myrecords/*`
+`javac --release 17 -d lib/ schemas/myrecords/*`
 
 If all goes well you'll have in your `lib` folder 3 classes. Nextflow will attach these classes in the classpath
 so `nf-plugin` will be able to inspect them.
