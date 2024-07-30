@@ -2,6 +2,8 @@ group 'es.edn' // change it in case you want to publish in maven
 
 
 nextflowPlugin{
+    nextflowVersion = '24.04.2'
+
     githubOrganization = publish_repoOwner
 
     // pluginClassName, if not specified, can be calculated by gradle tasks
@@ -17,5 +19,5 @@ nextflowPlugin{
 
 dependencies {
     // ADD HERE PLUGINS DEPENDENCIES
-    
+    implementation 'com.jerolba:carpet-record:0.0.13'
 }

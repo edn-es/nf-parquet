@@ -5,7 +5,8 @@
 build
 /.idea/
 /.nextflow/
-/example/.nextflow.log
-/example/.nextflow.log.*
-/example/work
-/example/.nextflow
+/validation/work
+/validation/**/.nextflow*
+/validation/**/cache
+/validation/**/*.parquet
+/validation/**/*.class

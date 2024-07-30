@@ -33,8 +33,8 @@ dependencies {
 
     // test plugin
     testImplementation "io.nextflow:nextflow:$nextflowPlugin.nextflowVersion"
-    testImplementation ("org.spockframework:spock-core:2.2-groovy-3.0") { exclude group: 'org.codehaus.groovy'; exclude group: 'net.bytebuddy' }
-    testImplementation ('org.spockframework:spock-junit4:2.2-groovy-3.0') { exclude group: 'org.codehaus.groovy'; exclude group: 'net.bytebuddy' }
+    testImplementation ("org.spockframework:spock-core:2.2-groovy-4.0") { exclude group: 'org.codehaus.groovy'; exclude group: 'net.bytebuddy' }
+    testImplementation ('org.spockframework:spock-junit4:2.2-groovy-4.0') { exclude group: 'org.codehaus.groovy'; exclude group: 'net.bytebuddy' }
 
     testImplementation(testFixtures("io.nextflow:nextflow:$nextflowPlugin.nextflowVersion"))
     testImplementation(testFixtures("io.nextflow:nf-commons:$nextflowPlugin.nextflowVersion"))
@@ -53,8 +53,8 @@ jar {
                 'Plugin-Id': project.name,
                 'Plugin-Version': archiveVersion,
                 'Plugin-Class': nextflowPlugin.pluginClassName,
-                'Plugin-Provider': 'Your organization',
-                'Plugin-Requires': '>=22.10.0',
+                'Plugin-Provider': 'EDN',
+                'Plugin-Requires': '>=24.04.2',
         )
     }
 }
@@ -62,49 +62,11 @@ jar {
 java {
     withJavadocJar()
     withSourcesJar()
-}
-
-
-publishing {
-    publications {
-        maven(MavenPublication) {
-            groupId = "$project.group"
-            artifactId = "$project.name"
-
-            artifact source: zipPlugin, extension: 'zip'
-
-            pom {
-                name = "$project.name"
-                description = 'Nextflow Plugin'
-                url = 'https://github.com/edn-es/nf-plugin-template'
-                inceptionYear = '2023'
-                licenses {
-                    license {
-                        name = 'Apache-2.0'
-                        url = 'https://spdx.org/licenses/Apache-2.0.html'
-                    }
-                }
-                developers {
-                    developer {
-                        id = 'jagedn'
-                        name = 'Jorge Aguilera'
-                    }
-                }
-                scm {
-                    connection = 'scm:git:https://github.com/edn-es/nf-plugin-template.git'
-                    developerConnection = 'scm:git:ssh://github.com/edn-es/nf-plugin-template.git'
-                    url = 'http://github.com/edn-es/nf-plugin-template'
-                }
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            url = layout.buildDirectory.dir('staging-deploy')
-        }
+    toolchain {
+       languageVersion = JavaLanguageVersion.of(17)
     }
 }
+
 
 jreleaser {
     project {
@@ -141,20 +103,6 @@ jreleaser {
                 }
             }
             token = System.properties['JRELEASER_GITHUB_TOKEN'] ?: findProperty('JRELEASER_GITHUB_TOKEN')
-        }
-    }
-}
-
-signing {
-    sign publishing.publications.maven
-}
-
-
-nexusPublishing {
-    repositories {
-        sonatype {  //only for users registered in Sonatype after 24 Feb 2021
-            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.nextflow.plugin
+package es.edn.nextflow.plugin
 
 import nextflow.Channel
 import nextflow.plugin.Plugins
@@ -10,14 +10,16 @@ import spock.lang.Shared
 import test.Dsl2Spec
 import test.MockScriptRunner
 
+import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.Manifest
 
 class PluginTest extends Dsl2Spec{
 
     @Shared String pluginsMode
 
     def setup() {
-        // reset previous instances
+// reset previous instances
         PluginExtensionProvider.reset()
         // this need to be set *before* the plugin manager class is created
         pluginsMode = System.getProperty('pf4j.mode')
@@ -29,6 +31,11 @@ class PluginTest extends Dsl2Spec{
             protected PluginDescriptorFinder createPluginDescriptorFinder() {
                 return new TestPluginDescriptorFinder(){
                     @Override
+                    protected Manifest readManifestFromDirectory(Path pluginPath) {
+                        def manifestPath= getManifestPath(pluginPath)
+                        final input = Files.newInputStream(manifestPath)
+                        return new Manifest(input)
+                    }
                     protected Path getManifestPath(Path pluginPath) {
                         return pluginPath.resolve('build/tmp/jar/MANIFEST.MF')
                     }
@@ -56,34 +63,4 @@ class PluginTest extends Dsl2Spec{
         result.val == Channel.STOP
     }
 
-    def 'should execute a function' () {
-        when:
-        def SCRIPT = '''
-            include {randomString} from 'plugin/nf-plugin-template'
-            channel
-                .of( randomString(20) )      
-            '''
-        and:
-        def result = new MockScriptRunner([:]).setScript(SCRIPT).execute()
-        then:
-        result.val.size() == 20
-        result.val == Channel.STOP
-    }
-
-    def 'should use a configuration' () {
-        when:
-        def SCRIPT = '''
-            include {randomString} from 'plugin/nf-plugin-template'
-            channel
-                .of( randomString(20) )      
-            '''
-        and:
-        def result = new MockScriptRunner([
-                example:[
-                        maxSize : 5
-                ]]).setScript(SCRIPT).execute()
-        then:
-        result.val.size() == 5
-        result.val == Channel.STOP
-    }
 }

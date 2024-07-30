@@ -1,109 +1,200 @@
-= nf-plugin-template: a Nextflow Plugin Template
-Jorge Aguilera <jagedn@gmail.com>
+= nf-parquet
+Jorge Aguilera <jorge@edn.es>
 v0.0.1
 :toc: left
 
-nf-plugin-template is a gradle template to create Nextflow plugins
+nf-parquet is a Nextflow plugin able to read and write parquet files
 
-You can grab the template from:
+This plugin provides with several `Functions` to work with parquet files
+as `fromParquet`, to emit the content of a file, or `writeRecords` to
+write a Collection of records
 
-https://github.com/jagedn/nf-plugin-template/
+WARNING:: This plugin relay heavily in the `Record` Java concept introduced
+in recent versions of Java, so it requires Java version 19 as a minimum
 
-== Features
+== CSV vs Parquet
 
-- minimal changes
-- simple structure, oriented to a single plugin
-- gradle 8.4
-- custom Gradle tasks included
-- ready to publish GitHub releases
-- asciidoctor documentation + GitHub Pages
+A csv file is a text file where each line represents a record and fields are
+separated by some special character(";" for example)
 
-== Changes
-
-This is a fork of the original jagedn/nf-plugin-template repository. In case you're using
-original repo this new repo contains:
-
-- use gradle.properties to configure required variables
-- publish releases using JReleaser
+Parquet by opposite is a binary file and can't be opened with a simple editor,
+but file size is smaller and has a better read performance
 
 
-== Steps
+== SchemaS preparation
 
-- Create a new Github project using this template
-- Clone in a directory with the name of your new plugin, i.e.
-`nf-my-awesome-plugin`
+First thing to do (only one time meanwhile your schema doesn't change) is to define and compile the schemaS to use,
+represented as `Record` Java classes
 
-- configure all details about your project:
+In your nextflow pipeline repository create a folder `schemas` (for example) and a subfolder `myrecords` (for example)
 
-.gradle.properties
+Create two records java:
+
+.CustomRecord.java
+[source, java]
 ----
-publish_description = An unofficial template to build Nextflow Plugins
-publish_url = https://github.com/edn-es/nf-plugin-template
-publish_year = 2023
-publish_developer = jagedn
-publish_developerName = Jorge Aguilera
-publish_git = scm:git:https://github.com/edn-es/nf-plugin-template.git
-publish_repoOwner = edn-es
-----
+package myrecords;
+record CustomRecord(long id, String name, int sizell, double value, double percentile) {
 
-- add your dependencies. For example, add apache poi libs from mavenCentral
-
-.nf-plugin.gradle
-----
-dependencies {
-    // add your dependencies, for example:
-    implementation 'org.apache.poi:poi:5.2.4'
-    implementation 'org.apache.poi:poi-ooxml:5.2.4'
 }
 ----
 
-- rename `src/main/groovy/com/nextflow/plugin` directory and `ExamplePlugin.groovy` file with the package and name of your plugin
+.SingleRecord.java
+[source,java]
+----
+package myrecords;
+record SingleRecord(long id, String name) {
+}
+----
 
-- rename ExamplePlugin with a better name (for example `MyAwesomePlugin`)
+INFO:: As you can see, they're pure Java records
 
-- delete/rename/update the `ExampleFunctions.groovy` with your extension
+**CustomRecords will represent a "full" record we want to write/read from a parquet file meanwhile SingleRecord
+will represent a `projection`, a subset of fields from CustomRecords.
+Using projections can improve the CPU and time spent on reading a huge file as the parquet reader is able to skip
+non-interesting records**
 
-You *don't* need to create the extensions points file (`src/main/resources/META-INF/extensions.idx`)
-as `registerIdx` task will scan your sources and build it
 
-*and this is all*, you can run for example `./gradlew jsonPlugin` to generate Nextflow's artifacts
+Now create a `module-info.java` file:
+
+.module-info.java
+[source,java]
+----
+module myrecords {
+    opens myrecords;
+}
+----
+
+This file is required to allow the access of our schemas to all modules (and avoid classpath loaders issues)
+
+Now compile your scemas with:
+
+`javac -d lib/ schemas/myrecords/*`
+
+If all goes well you'll have in your `lib` folder 3 classes. Nextflow will attach these classes in the classpath
+so `nf-plugin` will be able to inspect them.
+
+WARNING:: **This step* is only required meanwhile shemas is not changed. In case you need to add/remove fields or create new
+schemas (records java) you need to execute the `javac` again
+
+TIP:: Remember to add to the repository the schemas file. Maybe you'll want to add the lib folder with the binaries
+
 
 == Configuration
 
-This template includes an `ExampleConfiguration` to show you how to make your plugin configurable
+[source,groovy]
+----
+plugins {
+     id "nf-parquet@LATEST_VERSION"
+}
 
-== Test
+// Nothing configurable by the moment
+----
 
-You can/need to create as many tests you consider. This template includes
-a full example running a pipeline and checking the result
+== Basic example
 
-== Tasks
+In this example, we'll create a parquet file, and after we'll process each record
 
-INFO:: You can find new gradle tasks in `nextflow` group
+[source,groovy]
+----
+include {fromParquet; writeRecords} from 'plugin/nf-parquet' //<1>
 
-- `generateIdx`, scan sources and generate the `extensions.idx` resource
-- `zipPlugin` , compile and package your plugin in a zip file ready to be used by Nextflow
-- `unzipPlugin` , extract the zip file into your $HOME/.nextflow/plugins so you can use it in pipelines
-- `jsonPlugin`, create the json spec required by nextflow to publish a plugin
+import myrecords.*  //<2>
 
-A typical scenario can be, once you've created/implemented some logic in your plugin, you've created some test
-but want to see in action in a pipeline. You can run the `unzipPlugin` task, and it will install the plugin into
-your $HOME/.nextflow/plugin directory
+writeRecords("test.parquet", [  //<3>
+        new CustomRecord(1,"test1",11, new Random().nextDouble(), new Random().nextDouble()),
+        new CustomRecord(2,"test2",12, new Random().nextDouble(), new Random().nextDouble()),
+        new CustomRecord(3,"test3",13, new Random().nextDouble(), new Random().nextDouble()),
+])
 
-Or you can run the pipeline using the NXF_PLUGINS_TEST_REPOSITORY env with your `build/plugins` directory
+process HELLO {
+    input: val(customer)
+    output: stdout
+    """
+    echo hello ${customer.name()}
+    """
+}
+
+workflow {
+    channel.fromParquet("test.parquet", CustomRecord) //<4>
+            | HELLO
+            | view
+}
+----
+<1> import nf-parquet functions
+<2> import our schemas
+<3> use writeRecords function to write a Collection of records
+<4> read the file and emit every record to a process
 
 
-== Documentation
+== Projection example
 
-This template include `asciidoctor` gradle plugin to generate documentation.
+In previous example we've seen how to write and read a `CustomRecord`. If all goes well you'll have a
+`test2.parquet` file with three records
 
-You can write your documentation at `src/docs/asciidoc` and run `./gradlew asciidoctor` to build it
-at `build/doc` directory.
+In this example, we'll read these records but only a subset of fields
 
-Remember to prepare your GitHub repository with GH Pages (go to Settings, Pages and select `GitHub Actions` as source) and your documentation will be published automagically
+[source,groovy]
+----
+include { fromParquet } from 'plugin/nf-parquet'
 
-== Release
+import myrecords.*
 
-This template uses `JReleaser` to publish releases in GitHub (publish in MavenCentral soon). Also you can use
-the `release` GitHub action to run it (it only requires you specify which version are you deploying)
+channel.fromParquet( "test.parquet", SingleRecord ) //<1>
+        | view
+----
+<1> Read only id and name (defined in SingleRecord)
 
+== Complex schema
+
+Imagine you have a "complex" schema where a `Person` has an `Address` and a `Job`
+
+[source, java]
+----
+record Address(String street, String zip, String city) { }
+record Job(String company, String position, int years){ }
+record Person(long id, Job job, Address address) { }
+
+record SingleAddress(String street) { }
+record SinglePerson(long id, SingleAddress address) { }
+----
+
+Create these new Java records in the `schema/myrecords` folder and recompile them using the javac command
+
+Similar to previous examples you can generate a `presidents.parquet` file:
+
+[source,groovy]
+----
+include {
+        writeRecords
+} from 'plugin/nf-parquet'
+
+import myrecords.*
+
+writeRecords(
+        "presidents.parquet",
+        [
+                new Person(1010101,
+                        new Job("USA", "POTUS", 3),
+                        new Address("1600 Pennsylvania Av.", "20500", "Washington")),
+                new Person(1010102,
+                        new Job("Spain", "POSPAIN", 12),
+                        new Address("Moncloa.", "28000", "Madrid")),
+        ])
+
+----
+
+or read a projection of them:
+
+[source,groovy]
+----
+include {
+    fromParquet
+} from 'plugin/nf-parquet'
+
+import myrecords.*
+
+channel.fromParquet( "presidents.parquet", SinglePerson )
+        | map { it.address().street() }
+        | view
+----
