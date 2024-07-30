@@ -74,7 +74,8 @@ Now compile your scemas with:
 If all goes well you'll have in your `lib` folder 3 classes. Nextflow will attach these classes in the classpath
 so `nf-plugin` will be able to inspect them.
 
-WARNING:: **This step* is only required meanwhile shemas is not changed. In case you need to add/remove fields or create new
+WARNING:: This step is only required meanwhile your schemas not change.
+In case you need to add/remove fields or create new
 schemas (records java) you need to execute the `javac` again
 
 TIP:: Remember to add to the repository the schemas file. Maybe you'll want to add the lib folder with the binaries
@@ -198,3 +199,25 @@ channel.fromParquet( "presidents.parquet", SinglePerson )
         | map { it.address().street() }
         | view
 ----
+
+
+== Schemaless
+
+In case you don't want to deal with the definition (and compilation) of record schemas, and in the case you **only want
+to read** parquet files, you can use the `fromRawParquet` Function
+
+This Function read the parquet file and emits the records as `Map` so you don't need to define any schema
+
+[source,groovy]
+----
+include {
+    fromRawParquet
+} from 'plugin/nf-parquet'
+
+channel.fromRawParquet( "presidents.parquet" )
+        | map { it.address.street }
+        | view
+----
+
+In this case `map` operator receives a `Map<Object,Object>` so you can navigate using Groovy syntax over it
+

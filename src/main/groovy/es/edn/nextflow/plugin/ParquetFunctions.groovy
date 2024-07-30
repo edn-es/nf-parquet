@@ -107,7 +107,14 @@ class ParquetFunctions extends PluginExtensionPoint{
         return channel
     }
 
-    private void emitRawFile(DataflowWriteChannel channel, String path, Class<Record> clazz) {
+    @Factory
+    DataflowWriteChannel fromRawParquet(String path){
+        final channel = CH.create()
+        session.addIgniter((action) -> emitRawFile(channel, path, Map))
+        return channel
+    }
+
+    private void emitRawFile(DataflowWriteChannel channel, String path, Class clazz) {
         try {
             log.info "Start reading $path, with projection $clazz"
             var reader = new CarpetReader(Path.of(path).toFile(), clazz)
