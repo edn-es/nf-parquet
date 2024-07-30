@@ -94,6 +94,7 @@ jreleaser {
     release {
         github {
             enabled = true
+            tagName = '{{projectVersion}}'
             repoOwner = publish_repoOwner
             overwrite = true
             changelog{
