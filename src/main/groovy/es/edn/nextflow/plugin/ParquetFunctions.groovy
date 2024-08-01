@@ -11,7 +11,9 @@ import nextflow.plugin.extension.Factory
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.PluginExtensionPoint
 import nextflow.Session
+import org.apache.hadoop.conf.Configuration
 import org.apache.parquet.hadoop.ParquetFileWriter
+import org.apache.parquet.hadoop.util.HadoopInputFile
 
 import java.nio.file.Path
 
@@ -28,7 +30,7 @@ class ParquetFunctions extends PluginExtensionPoint{
         this.session.addShutdownHook {
             closeAllResources()
         }
-        this.configuration = parseConfig(session.config.navigate('parquet') as Map)
+        this.configuration = parseConfig(session.config)
     }
 
     protected PluginConfiguration parseConfig(Map map){
@@ -98,9 +100,19 @@ class ParquetFunctions extends PluginExtensionPoint{
     }
 
     @Factory
-    DataflowWriteChannel fromParquet(String path, Object clazz){
+    DataflowWriteChannel fromParquet(Object objPath, Object clazz){
         if(!(clazz instanceof Class<Record>) ){
             throw new IllegalArgumentException("A Record.class is required")
+        }
+        Path path = null
+        if( objPath instanceof Path){
+            path = objPath as Path
+        }
+        if( objPath instanceof CharSequence){
+            path = Path.of(objPath.toString())
+        }
+        if(!path){
+            throw new IllegalArgumentException("$objPath can't be converted to Path")
         }
         final channel = CH.create()
         session.addIgniter((action) -> emitRawFile(channel, path, clazz as Class<Record>))
@@ -108,18 +120,29 @@ class ParquetFunctions extends PluginExtensionPoint{
     }
 
     @Factory
-    DataflowWriteChannel fromRawParquet(String path){
+    DataflowWriteChannel fromRawParquet(Object objPath) {
+        Path path = null
+        if( objPath instanceof Path){
+            path = objPath as Path
+        }
+        if( objPath instanceof CharSequence){
+            path = Path.of(objPath.toString())
+        }
+        if(!path){
+            throw new IllegalArgumentException("$objPath can't be converted to Path")
+        }
         final channel = CH.create()
         session.addIgniter((action) -> emitRawFile(channel, path, Map))
         return channel
     }
 
-    private void emitRawFile(DataflowWriteChannel channel, String path, Class clazz) {
+    private void emitRawFile(DataflowWriteChannel channel, Path path, Class clazz) {
         try {
             log.info "Start reading $path, with projection $clazz"
-            var reader = new CarpetReader(Path.of(path).toFile(), clazz)
-            for(def record : reader){
-                channel.bind(record)
+            if( path.toString().startsWith("s3:")){
+                emitS3File(channel, path, clazz)
+            }else {
+                emitLocalFile(channel, path, clazz)
             }
             log.info "Finished emitted $path, with projection $clazz"
             channel.bind(Channel.STOP)
@@ -128,4 +151,36 @@ class ParquetFunctions extends PluginExtensionPoint{
             session.abort(t)
         }
     }
+
+
+    private void emitLocalFile(DataflowWriteChannel channel, Path path, Class clazz) {
+        var reader = new CarpetReader(path.toFile(), clazz)
+        for (def record : reader) {
+            channel.bind(record)
+        }
+    }
+
+    private void emitS3File(DataflowWriteChannel channel, Path path, Class clazz) {
+        Configuration config = new Configuration()
+        config.classLoader = ParquetFunctions.classLoader
+
+        if( configuration?.awsConfig ) {
+            if (configuration?.awsConfig?.accessKey)
+                config.set("fs.s3a.access.key", configuration?.awsConfig?.accessKey)
+            if (configuration?.awsConfig?.secretKey)
+                config.set("fs.s3a.secret.key", configuration?.awsConfig?.secretKey)
+            if (configuration?.awsConfig?.endpoint)
+                config.set("fs.s3a.endpoint", configuration?.awsConfig?.endpoint)
+        }else{
+            config.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.AnonymousAWSCredentialsProvider")
+        }
+        final String s3a = path.toString().replace("s3:/","s3a://")
+        org.apache.hadoop.fs.Path hPath = new org.apache.hadoop.fs.Path(s3a)
+        var inputFile = HadoopInputFile.fromPath(hPath, config)
+        var reader = new CarpetReader(inputFile, clazz)
+        for (def record : reader) {
+            channel.bind(record)
+        }
+    }
+
 }

@@ -20,4 +20,7 @@ nextflowPlugin{
 dependencies {
     // ADD HERE PLUGINS DEPENDENCIES
     implementation 'com.jerolba:carpet-record:0.0.13'
+    implementation 'org.apache.hadoop:hadoop-aws:3.3.5'
+    implementation 'org.apache.commons:commons-text:1.12.0'
+
 }

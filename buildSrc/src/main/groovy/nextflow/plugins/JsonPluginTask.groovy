@@ -47,7 +47,7 @@ abstract class JsonPluginTask extends DefaultTask{
     protected static String computeSha512(File file) {
         if( !file.exists() )
             throw new GradleException("Missing file: $file -- cannot compute SHA-512")
-        return DigestUtils.sha512Hex(file.bytes)
+        return DigestUtils.sha512Hex(file.newInputStream())
     }
 
     @TaskAction
