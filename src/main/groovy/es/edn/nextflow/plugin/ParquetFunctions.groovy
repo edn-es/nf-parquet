@@ -2,6 +2,7 @@ package es.edn.nextflow.plugin
 
 import com.jerolba.carpet.CarpetReader
 import com.jerolba.carpet.CarpetWriter
+import com.jerolba.carpet.io.OutputStreamOutputFile
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
@@ -14,6 +15,8 @@ import nextflow.Session
 import org.apache.hadoop.conf.Configuration
 import org.apache.parquet.hadoop.ParquetFileWriter
 import org.apache.parquet.hadoop.util.HadoopInputFile
+import org.apache.parquet.hadoop.util.HadoopOutputFile
+import org.apache.parquet.io.OutputFile
 
 import java.nio.file.Path
 
@@ -27,7 +30,7 @@ class ParquetFunctions extends PluginExtensionPoint{
     @Override
     protected void init(Session session) {
         this.session = session
-        this.session.addShutdownHook {
+        this.session.onShutdown {
             closeAllResources()
         }
         this.configuration = parseConfig(session.config)
@@ -63,11 +66,15 @@ class ParquetFunctions extends PluginExtensionPoint{
     private Map<String, CarpetWriter> currentWriters = [:]
 
     @Function
-    String createWriter(String filename, Object clazz){
-        if(!(clazz instanceof Class<Record>) ){
+    String createWriter(String filename, Object clazz) {
+        if (!(clazz instanceof Class<Record>)) {
             throw new IllegalArgumentException("A Record.class is required")
         }
-        def currentOutputStream = new FileOutputStream(filename)
+
+        def currentOutputStream = filename.startsWith("s3:") ?
+                createS3Writer(filename, clazz) :
+                createLocalWriter(filename, clazz)
+
         def currentWriter = new CarpetWriter.Builder<>(currentOutputStream, clazz as Class<Record>)
                 .withWriteMode(ParquetFileWriter.Mode.OVERWRITE)
                 .build()
@@ -76,8 +83,23 @@ class ParquetFunctions extends PluginExtensionPoint{
         id
     }
 
+    OutputFile createLocalWriter(String filename, Object clazz){
+        def currentOutputStream = new FileOutputStream(filename)
+        return new OutputStreamOutputFile(currentOutputStream)
+    }
+
+    OutputFile createS3Writer(String filename, Object clazz){
+        Configuration config = newConfiguration()
+        final String s3a = filename.replace("s3:","s3a:")
+        org.apache.hadoop.fs.Path hPath = new org.apache.hadoop.fs.Path(s3a)
+
+        def currentOutputStream = HadoopOutputFile.fromPath(hPath, config)
+        return currentOutputStream
+    }
+
     @Function
-    Record appendRecord(String id, Record data){
+    Record appendRecord(Record data, Map options=[:]){
+        String id = options.id ?: currentWriters?.entrySet()?.first()?.key
         if( currentWriters.containsKey(id)) {
             currentWriters[id].write(data)
         }
@@ -161,26 +183,31 @@ class ParquetFunctions extends PluginExtensionPoint{
     }
 
     private void emitS3File(DataflowWriteChannel channel, Path path, Class clazz) {
-        Configuration config = new Configuration()
-        config.classLoader = ParquetFunctions.classLoader
-
-        if( configuration?.awsConfig ) {
-            if (configuration?.awsConfig?.accessKey)
-                config.set("fs.s3a.access.key", configuration?.awsConfig?.accessKey)
-            if (configuration?.awsConfig?.secretKey)
-                config.set("fs.s3a.secret.key", configuration?.awsConfig?.secretKey)
-            if (configuration?.awsConfig?.endpoint)
-                config.set("fs.s3a.endpoint", configuration?.awsConfig?.endpoint)
-        }else{
-            config.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.AnonymousAWSCredentialsProvider")
-        }
-        final String s3a = path.toString().replace("s3:/","s3a://")
+        Configuration config = newConfiguration()
+        final String s3a = path.toString().replace("s3:/","s3a://") //double slash required
         org.apache.hadoop.fs.Path hPath = new org.apache.hadoop.fs.Path(s3a)
         var inputFile = HadoopInputFile.fromPath(hPath, config)
         var reader = new CarpetReader(inputFile, clazz)
         for (def record : reader) {
             channel.bind(record)
         }
+    }
+
+    private Configuration newConfiguration(){
+        Configuration config = new Configuration()
+        config.classLoader = ParquetFunctions.classLoader
+        config.set("fs.file.impl","org.apache.hadoop.fs.LocalFileSystem")
+        if (configuration?.awsConfig?.accessKey)
+            config.set("fs.s3a.access.key", configuration?.awsConfig?.accessKey)
+        else
+            config.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.AnonymousAWSCredentialsProvider")
+        if (configuration?.awsConfig?.secretKey)
+            config.set("fs.s3a.secret.key", configuration?.awsConfig?.secretKey)
+        if (configuration?.awsConfig?.endpoint)
+            config.set("fs.s3a.endpoint", configuration?.awsConfig?.endpoint)
+        if (configuration?.awsConfig?.region)
+            config.set("fs.s3a.endpoint.region", configuration?.awsConfig?.region)
+        config
     }
 
 }

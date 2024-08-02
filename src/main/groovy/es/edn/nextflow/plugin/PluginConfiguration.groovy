@@ -11,6 +11,7 @@ class PluginConfiguration {
         if( map?.containsKey('aws') ){
             awsConfig = new AwsConfig(
                     endpoint: map.navigate('aws.client.endpoint'),
+                    region: map.navigate('aws.region'),
                     accessKey: map.navigate('aws.accessKey'),
                     secretKey: map.navigate('aws.secretKey'),
             )
@@ -23,5 +24,6 @@ class PluginConfiguration {
         String endpoint
         String accessKey
         String secretKey
+        String region
     }
 }
